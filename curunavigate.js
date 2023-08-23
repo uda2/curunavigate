@@ -1,110 +1,147 @@
 // くるんなび
 
 // new curunNavigate({
-// "start": {"query" : "#start", "align" : "./images/title.png", "msg" : "テキスト入力欄に日本語や英語の一部を入力すると下に関係するタグが表示されます。"},
-// "file": {"query" : "#file", "align" : "left", "msg" : "生成画像がある場合は左上のボタンからファイルを開くと「prompt」や「negative prompt」が自動抽出されます。"}
+// "start": {"src" : "./images/title.png", "msg" : "サンプルテキスト"},
+// "file": {"query" : "#file", "align" : "left", "msg" : "サンプルテキスト"}
 // });
 
 const curunNavigate = class {
-  constructor(navigates) {
+  constructor(navigates, options) {
     this.navigates = navigates;
     this.navkeys = Object.keys(this.navigates);
-    this.navigate = document.getElementById("navigate");
-    if (!this.navigate) {
-      this.navigate = document.createElement("div");
-      this.navigate.setAttribute("id", "navigate");
-      document.body.appendChild(this.navigate);
+    if (!options) options = {};
+    this.curunkey = null;
+    this.clicktype = (options.clicktype)? options.clicktype:"cover";//coverかhole
+    this.viewedcallback = (options.viewedcallback)? options.viewedcallback:null;
+    if (options.viewedcsv) this.vieweddatas = options.viewedcsv.split(',');
+    else this.vieweddatas = (this.viewedcallback === null && localStorage.getItem("curun") !== null)? localStorage.getItem("curun").split(','):[];
+    this.curunwrap = document.getElementById("curunwrap");
+    if (!this.curunwrap) {
+      this.curunwrap = document.createElement("div");//外枠
+      this.curunwrap.setAttribute("id", "curunwrap");
+      this.curunhole = document.createElement("div");
+      this.curunhole.setAttribute("id", "curunhole");
+      this.curunwrap.appendChild(this.curunhole);
+      document.body.appendChild(this.curunwrap);
+      this.curuncover = document.createElement("div");//テキスト
+      this.curuncover.setAttribute("id", "curuncover");
+      document.body.appendChild(this.curuncover);
+    } else {
+      this.curuncover = document.getElementById("curuncover");
+      this.curunhole = document.getElementById("curunhole");
     }
     this.scrolling = null;
-    this.close = (e) => { this._close(e) };//削除可能にする為に変数化
-    this.scroll = (e) => { this._scroll(e) };//削除可能にする為に変数化
-    this.resize = (e) => { this._resize(e) };//削除可能にする為に変数化
-    this.navigate.addEventListener('click', this.close);
-    window.addEventListener('scroll', this.scroll);
-    window.addEventListener('resize', this.resize);
-    for (const mykey of this.navkeys) {
-      if (localStorage.getItem(mykey) !== null) continue;
-      this.setNavigate(this.navigates[mykey]);
-      break;
-    }
+    window.addEventListener('scroll', this.scroll.bind(this));
+    window.addEventListener('resize', this.resize.bind(this));
   }
-  _close(e) {
-    e.stopPropagation();
-    this.navigate.classList.remove('active');
-    for (const i in this.navkeys) {
-      if (localStorage.getItem(this.navkeys[i]) === null) {
-        localStorage.setItem(this.navkeys[i], 'done');
-        const next = Math.floor(i) + 1;
-        if (next < this.navkeys.length) this.setNavigate(this.navigates[this.navkeys[next]]);
-        break;
-      }
-    }
+  clear() {
+    this.vieweddatas = [];
+    if (this.viewedcallback === null) localStorage.setItem("curun", "[]");
+    else this.viewedcallback("[]");
   }
-  _scroll(e) {
+  close() {
+    if (this.curunkey === null) return;
+    this.vieweddatas.push(this.curunkey);
+    if (this.viewedcallback === null) localStorage.setItem("curun", this.vieweddatas.join());
+    else this.viewedcallback(this.vieweddatas.join());
+    document.body.classList.remove('curunactive');
+    if (this.clicktype === "hole" && this.navigates[this.curunkey].query) document.querySelector(this.navigates[this.curunkey].query).classList.remove("curuntarget");
+    this.curunkey = null;
+  }
+  scroll(e) {
+    if (this.navigates[this.curunkey].query) document.body.classList.add('curunscrolling');
+    this.curunhole.style.height = '0';
+    this.curunhole.style.width = '0';
     if (this.scrolling !== null) {
       clearTimeout(this.scrolling);
       this.scrolling = null;
     }
     // スムーズスクロールの完了を待つ
     this.scrolling = setTimeout(function () {
-      if (this.navigate.classList.contains('active')) this.reposNavigate();
+      if (document.body.classList.contains('curunactive')) this.reposNavigate();
       this.scrolling = null;
-    }, 100);
+    }.bind(this), 100);
   }
-  _resize(e) {
-    if (this.navigate.classList.contains('active')) this.showNavigate();
+  resize(e) {
+    if (document.body.classList.contains('curunactive')) this.showNavigate();
   }
   
-  setNavigate(data) {
-    if (data.align === "right") {
-      this.navigate.classList.remove('left');
-      this.navigate.classList.add('right');
-      this.navigate.innerHTML = "<p>"+data.msg+"</p>";
-    } else if (data.align === "left") {
-      this.navigate.classList.remove('right');
-      this.navigate.classList.add('left');
-      this.navigate.innerHTML = "<p>"+data.msg+"</p>";
-    } else {
-      this.navigate.classList.remove('right');
-      this.navigate.classList.remove('left');
-      this.navigate.innerHTML = '<img src="'+data.align+'" alt="'+data.msg+'">';
+  next() {
+    this.close();
+    for (const mykey of this.navkeys) {
+      if (this.vieweddatas.indexOf(mykey) !== -1) continue;
+      this.setNavigate(mykey);
+      break;
     }
-    this.navigate.classList.add('active');
-    this.navigate.setAttribute("data-query", data.query);
+  }
+  setNavigate(mykey) {
+    const data = this.navigates[mykey];
+    this.curuncover.innerHTML = '';
+    this.curuncover.classList.remove('right');
+    this.curuncover.classList.remove('left');
+    this.curuncover.classList.remove('image');
+    if (data.align === "right") {
+      this.curuncover.classList.add('right');
+      this.curuncover.textContent = data.msg;
+      if (this.clicktype === "hole") document.querySelector(data.query).classList.add("curuntarget");
+    } else if (data.align === "left") {
+      this.curuncover.classList.add('left');
+      this.curuncover.textContent = data.msg;
+      if (this.clicktype === "hole") document.querySelector(data.query).classList.add("curuntarget");
+    } else if (data.src !== "") {
+      this.curuncover.classList.add('image');
+      const img = document.createElement("img");
+      img.src = data.src;
+      img.setAttribute("alt", data.msg);
+      img.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.next();
+      });
+      this.curuncover.appendChild(img);
+    }
+    document.body.classList.add('curunactive');
+    this.curunkey = mykey;
     this.showNavigate();
   }
   // 表示範囲以外なら表示範囲にスクロールする。（リサイズ用に分離）
   showNavigate() {
-    const query = this.navigate.getAttribute("data-query");
-    const target = document.querySelector(query);
-    if (target) {
-      const targetRect = target.getBoundingClientRect();
-    
-      const fixedTop = targetRect.top + window.scrollY;
-      const fixedLeft = targetRect.left + window.scrollX;
-      if (fixedTop >= 0 && fixedTop < window.innerHeight / 2 && fixedLeft >= 0 && fixedLeft < window.innerWidth) {
-        this.reposNavigate();
-      } else {
-        target.scrollIntoView({behavior: 'smooth'});
-      }
+    if (this.curunkey === null) return;
+    if (!this.navigates[this.curunkey].query) return;//画像
+    const target = document.querySelector(this.navigates[this.curunkey].query);
+    const targetRect = target.getBoundingClientRect();//ビューポートの左上を基準
+  
+    if (targetRect.top >= 0 && targetRect.top < window.innerHeight / 2 && targetRect.left >= 0 && targetRect.left < window.innerWidth) {
+      this.reposNavigate();
+    } else {
+      document.body.classList.add('curunscrolling');
+      target.scrollIntoView({behavior: 'smooth', block: 'center', inline: 'center'});
     }
   }
-  // スクロールイベント完了時にメッセージの位置調整（スクロール用に分離）
+  // スクロール完了時にメッセージの位置調整（スクロール用に分離）
   reposNavigate() {
-    const query = this.navigate.getAttribute("data-query");
-    const target = document.querySelector(query);
-    const targetRect = target.getBoundingClientRect();
+    if (this.curunkey === null) return;
+    if (!this.navigates[this.curunkey].query) return;//画像
+    const target = document.querySelector(this.navigates[this.curunkey].query);
+    const targetRect = target.getBoundingClientRect();//ビューポートの左上を基準
   
-    const fixedTop = targetRect.top + window.scrollY;
-    const fixedLeft = targetRect.left + window.scrollX;
-    const naviText = this.navigate.querySelector("p");
-    if (this.navigate.classList.contains('right')) {
-      naviText.style.left = "auto";
-      naviText.style.right = (fixedLeft + targetRect.width) + "px";
+    if (this.curuncover.classList.contains('right')) {
+      this.curuncover.style.left = "auto";
+      this.curuncover.style.right = (window.innerWidth - targetRect.left - targetRect.width) + "px";
     } else {
-      naviText.style.left = fixedLeft + "px";
-      naviText.style.right = "auto";
+      this.curuncover.style.left = targetRect.left + "px";
+      this.curuncover.style.right = "auto";
     }
-    naviText.style.top = fixedTop + "px";
+    if (targetRect.top > window.innerHeight - (targetRect.top + targetRect.height)) {
+      this.curuncover.classList.add('down');
+      this.curuncover.style.top = (targetRect.top - 50) + "px";
+    } else {
+      this.curuncover.classList.remove('down');
+      this.curuncover.style.top = (targetRect.top + targetRect.height - 20) + "px";
+    }
+    this.curunhole.style.top = (targetRect.top - 5) + 'px';
+    this.curunhole.style.left = (targetRect.left - 5) + 'px';
+    this.curunhole.style.height = (targetRect.height + 10) + 'px';
+    this.curunhole.style.width = (targetRect.width + 10) + 'px';
+    document.body.classList.remove('curunscrolling');
   }
 }
